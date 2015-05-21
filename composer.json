@@ -1,0 +1,13 @@
+{
+    "name": "tiborb/resequencer",
+    "require": {
+        "videlalvaro/php-amqplib": "2.1.*"
+    },
+    "authors": [
+        {
+            "name": "Tibor Barna",
+            "email": "tibor.barna@wiredminds.de"
+        }
+    ],
+    "minimum-stability": "dev"
+}
