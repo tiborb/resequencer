@@ -1,54 +1,157 @@
 <?php
 
-require_once dirname(__DIR__) . '/vendor/autoload.php';
+require_once __DIR__ . '/vendor/autoload.php';
 use PhpAmqpLib\Connection\AMQPConnection;
 
-
-class Comparator
-{
-    
+interface ComparatorInterface{
+    #public static function compare($a, $b);
+    public function getComparator();
+    public function next($a);
+    public function previous($a);
+    public function isNext($a, $b);
 }
 
+class Comparator implements ComparatorInterface {
+
+    public function getComparator()
+    {
+        return function ($a, $b) {
+            if ($a == $b) {
+                return 0;
+            }
+            return ($a < $b) ? -1 : 1;
+        };
+    }
+    
+    public function next($a)
+    {
+        return ++$a;
+    }
+    
+    public function previous($a)
+    {
+        return --$a;
+    }
+    
+    public function isNext($a, $b)
+    {   
+        #echo "isNext $a, $b";
+        $isNext = ($b == $this->next($a));
+        #var_dump($isNext);
+        #echo "\n";
+        return $isNext;
+    }
+}
 
 class Sequence{
-    private $seq = array();
+
+    /**
+     * @var ComparatorInterface
+     */
+    private $comparator;
     
-    public function push($elem){
-        array_push($this->seq, $elem);
+    private $duplicates = false;
+
+    private $buffer;
+
+    public function __construct($array, ComparatorInterface $comparator)
+    {
+        $this->clear();
+        $this->comparator = $comparator;
     }
     
-    public function flush($start = 0, $end = 0){
-        
+    public function push($value)
+    {   
+        if (false === $this->duplicates && in_array($value, $this->buffer)){
+            return;
+        }
+        $this->buffer[] = $value;
     }
     
-    private function findGap(){
-        
+    public function sort()
+    {
+        usort($this->buffer, $this->comparator->getComparator());
     }
     
-    private function getTillGap(){
+    public function count()
+    {
+        return count($this->buffer);
+    }
+    
+    public function getBuffer()
+    {
+        return $this->buffer;
+    }
+    
+    public function clear()
+    {
+        $this->buffer = array();
+    }
+    
+    public function firstKey()
+    {
+        reset($this->buffer);
+        return key($this->buffer);
+    }
+    
+    public function endKey()
+    {
+        end($this->buffer);
+        return key($this->buffer);
+    }
+    
+    public function getOrderedSequence()
+    {   
+        $ordered = array();
+        $this->sort();
+        reset($this->buffer);
         
+        while (($value = current($this->buffer)) !== false)
+        {
+            $key = key($this->buffer);
+            $expectedNext = $this->comparator->next($value);
+            #printf("%s -> %s, expected next %s\n", $key, $value, $expectedNext);
+            $next = next($this->buffer);
+            #echo "next: '$next'\n";
+            if ($next !== FALSE){
+                if (true === $this->comparator->isNext($value, $next)){
+                    // there is a gap in the sequence at key position
+                    $ordered[] = array_shift($this->buffer);
+                }else{
+                    echo "bad sequence or end\n";
+                    return $ordered;
+                }
+            }
+        }
+        return $ordered;
     }
 }
-
-
 
 class Resequencer{
     
     private $channel;
     private $connection;
     private $callback;
-    
-    private $sequence = array();
+    private $sequence;
     
     public function __construct() {
-        $this->connection = new AMQPConnection('localhost', 5672, 'guest', 'guest');
+        $this->connection = new AMQPConnection('localhost', 5672, 'guest', 'guest', '/');
         $this->channel = $this->connection->channel();
         $this->channel->exchange_declare('logs', 'fanout', false, false, false);
-
+        
+        $this->sequence = new Sequence(array(), new Comparator());
         $this->callback = function($msg){
-            $this->sequence[] = $msg->body;
-            echo ' [x] ', $msg->body, "\n";
-            $this->dump();
+            $value = $msg->body;
+            if (is_numeric($value)){
+                $this->sequence->push((int)$value);
+            }else{
+                echo "NAN\n";
+            }
+            $vals = $this->sequence->getOrderedSequence();            
+            echo "-------------\n";
+            $buffered = $this->sequence->getBuffer();
+            echo "buffer  [" . implode(',', $buffered) . "] x" . count($buffered). "\n";
+            echo "ordered [" . implode(',', $vals). "] x" . count($vals). "\n";
         };
     }
 
@@ -71,11 +174,6 @@ class Resequencer{
         echo 'Bye!' , "\n";
         $this->channel->close();
         $this->connection->close();
-    }
-    
-    public function dump()
-    {
-        var_dump($this->sequence);
     }
 }
 
