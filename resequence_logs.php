@@ -4,7 +4,6 @@ require_once __DIR__ . '/vendor/autoload.php';
 use PhpAmqpLib\Connection\AMQPConnection;
 
 interface ComparatorInterface{
-    #public static function compare($a, $b);
     public function getComparator();
     public function next($a);
     public function previous($a);
@@ -35,11 +34,7 @@ class Comparator implements ComparatorInterface {
     
     public function isNext($a, $b)
     {   
-        #echo "isNext $a, $b";
-        $isNext = ($b == $this->next($a));
-        #var_dump($isNext);
-        #echo "\n";
-        return $isNext;
+        return ($b == $this->next($a));
     }
 }
 
@@ -112,7 +107,6 @@ class Sequence{
             $expectedNext = $this->comparator->next($value);
             #printf("%s -> %s, expected next %s\n", $key, $value, $expectedNext);
             $next = next($this->buffer);
-            #echo "next: '$next'\n";
             if ($next !== FALSE){
                 if (true === $this->comparator->isNext($value, $next)){
                     // there is a gap in the sequence at key position
@@ -134,6 +128,9 @@ class Resequencer{
     private $callback;
     private $sequence;
     
+    private $allMessages = 0;
+    private $orderdMessages = 0;
+    
     public function __construct() {
         $this->connection = new AMQPConnection('localhost', 5672, 'guest', 'guest', '/');
         $this->channel = $this->connection->channel();
@@ -143,6 +140,7 @@ class Resequencer{
         $this->callback = function($msg){
             $value = $msg->body;
             if (is_numeric($value)){
+                $this->allMessages++;
                 $this->sequence->push((int)$value);
             }else{
                 echo "NAN\n";
@@ -152,6 +150,10 @@ class Resequencer{
             $buffered = $this->sequence->getBuffer();
             echo "buffer  [" . implode(',', $buffered) . "] x" . count($buffered). "\n";
             echo "ordered [" . implode(',', $vals). "] x" . count($vals). "\n";
+            
+            $this->orderdMessages += count($vals);
+            
+            echo "{$this->orderdMessages}/{$this->allMessages}\n";
         };
     }
 
@@ -171,7 +173,6 @@ class Resequencer{
     }
     
     public function __destruct() {
-        echo 'Bye!' , "\n";
         $this->channel->close();
         $this->connection->close();
     }
