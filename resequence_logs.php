@@ -1,5 +1,6 @@
 <?php
 
+require_once __DIR__. '/config.php';
 require_once __DIR__ . '/vendor/autoload.php';
 use PhpAmqpLib\Connection\AMQPConnection;
 
@@ -51,7 +52,7 @@ class Sequence{
 
     public function __construct($array, ComparatorInterface $comparator)
     {
-        $this->clear();
+        $this->clearBuffer();
         $this->comparator = $comparator;
     }
     
@@ -78,7 +79,7 @@ class Sequence{
         return $this->buffer;
     }
     
-    public function clear()
+    public function clearBuffer()
     {
         $this->buffer = array();
     }
@@ -127,25 +128,34 @@ class Resequencer{
     private $connection;
     private $callback;
     private $sequence;
-    
     private $allMessages = 0;
     private $orderdMessages = 0;
+    private $limit = 20000;
+    private $in = array();
+    private $out = array();
     
     public function __construct() {
-        $this->connection = new AMQPConnection('localhost', 5672, 'guest', 'guest', '/');
+        $this->connection = new AMQPConnection(RABBIT_HOST, RABBIT_PORT, RABBIT_USER, RABBIT_PASS, RABBIT_VHOST);
         $this->channel = $this->connection->channel();
         $this->channel->exchange_declare('logs', 'fanout', false, false, false);
         
         $this->sequence = new Sequence(array(), new Comparator());
+        
+        // for every message
         $this->callback = function($msg){
             $value = $msg->body;
             if (is_numeric($value)){
+                #$this->in[] = $value;
+                #$this->in = array_unique($this->in);
                 $this->allMessages++;
                 $this->sequence->push((int)$value);
-            }else{
+            } else {
                 echo "NAN\n";
             }
             $vals = $this->sequence->getOrderedSequence();            
+            
+            #$this->out = array_unique(array_merge($this->out, $vals));
+            
             echo "-------------\n";
             $buffered = $this->sequence->getBuffer();
             echo "buffer  [" . implode(',', $buffered) . "] x" . count($buffered). "\n";
@@ -153,7 +163,12 @@ class Resequencer{
             
             $this->orderdMessages += count($vals);
             
-            echo "{$this->orderdMessages}/{$this->allMessages}\n";
+            echo "{$this->orderdMessages}/" . count($this->allMessages) . "\n";
+            if ($value % $this->limit == 0){
+                #echo "limit reached: " . count($this->allMessages) . "\n";
+                #var_dump(array_diff($this->in, $this->out));
+                #die;
+            }
         };
     }
 
