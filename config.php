@@ -1,5 +1,7 @@
 <?php
 
+namespace tiborb;
+
 /**
  * Description of config
  *

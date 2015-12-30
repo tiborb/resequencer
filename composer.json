@@ -9,5 +9,8 @@
             "email": "tibor.barna@wiredminds.de"
         }
     ],
-    "minimum-stability": "dev"
+    "minimum-stability": "dev",
+    "autoload": {
+        "psr-4": {"tiborb\\": "src/"}
+    }
 }
